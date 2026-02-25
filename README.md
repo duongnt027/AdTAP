@@ -1,110 +1,100 @@
-# Nghiên cứu và ứng dụng thuật toán Học tăng cường và Generative AI trong tăng cường dữ liệu ảnh
+# Research and Application of Reinforcement Learning and Generative AI Algorithms for Image Data Augmentation
 
-## Mô tả
+## Description
 
-Dự án tập trung nghiên cứu và ứng dụng các thuật toán Học tăng cường
-(Reinforcement Learning) kết hợp với Generative AI nhằm tăng cường dữ
-liệu ảnh. Mục tiêu là sinh ra các mẫu dữ liệu mới trong không gian tiềm
-ẩn (latent space), từ đó cải thiện khả năng phát hiện bất thường và hiệu
-suất của các mô hình thị giác máy tính.
+This project focuses on researching and applying Reinforcement Learning algorithms combined with Generative AI to enhance image data. The goal is to generate new data samples in the latent space, thereby improving the ability to detect anomalies and enhance the performance of computer vision models.
 
 ------------------------------------------------------------------------
 
-## Dữ liệu sử dụng
+## Datasets Used
 
--   **Chính thức:**
+-   **Official:**
     -   BMAD
--   **Ngoài ra (đang thử nghiệm):**
+-   **Additional (experimental):**
     -   PKU
     -   MV-Tec
     -   VisAD
 
 ------------------------------------------------------------------------
 
-## Kỹ thuật sử dụng
+## Techniques Used
 
 ### Generative Model
 
--   Sử dụng mô hình AutoEncoder để học biểu diễn tiềm ẩn `z` và tái tạo
-    dữ liệu ảnh từ vector tiềm ẩn này.
+-   Use AutoEncoder to learn latent representation `z` and reconstruct image data from this latent vector.
 
 ### Reinforcement Learning
 
--   Sử dụng thuật toán PPO (Proximal Policy Optimization) để học cách
-    sinh ra một nhiễu `delta z`.
--   Tạo vector tiềm ẩn mới:
+-   Use PPO (Proximal Policy Optimization) algorithm to learn how to generate a noise `delta z`.
+-   Create new latent vector:
 
 ```
 z' = z + Δz
 ```
-    
 
--   Vector `z'` được sử dụng để sinh ra dữ liệu ảnh mới thông qua
-    decoder.
+-   Vector `z'` is used to generate new image data through the decoder.
 
 ### Anomaly Detection
 
--   Sử dụng mô hình Transformer để phân biệt dữ liệu bình thường và dữ
-    liệu bất thường.
+-   Use Transformer model to distinguish between normal and abnormal data.
 
 ------------------------------------------------------------------------
 
-## Môi trường
+## Environment
 
 -   Python 3.11
--   Các thư viện được liệt kê trong file `requirements.txt`
--   Các kết quả và notebook đã chạy được lưu trong thư mục:
+-   Libraries listed in `requirements.txt` file
+-   Results and executed notebooks are saved in:
 
 ```
 results-ipynb/
 ```
-    
 
 ------------------------------------------------------------------------
 
-## Hướng dẫn chạy chương trình
+## Running Instructions
 
-### 1. Tải bộ dữ liệu
+### 1. Download Dataset
 
-Download bộ dữ liệu BMAD từ nguồn:
+Download BMAD dataset from:
 
 https://github.com/DorisBao/BMAD
 
 ------------------------------------------------------------------------
 
-### 2. Tiền xử lý dữ liệu
+### 2. Data Preprocessing
 
--   Tiền xử lý dữ liệu ảnh
--   Chia dữ liệu thành:
+-   Preprocess image data
+-   Split data into:
     -   train
     -   validation
--   Lưu dưới dạng `.npz` với:
+-   Save as `.npz` with:
 
 ```
 allow_pickle=True
 ```
-    
 
 ------------------------------------------------------------------------
 
-### 3. Cấu hình đường dẫn
+### 3. Configure Path
 
-Thay đổi đường dẫn dữ liệu trong các file `main`.
+Change data paths in `main` files.
 
 ------------------------------------------------------------------------
 
-### 4. Huấn luyện mô hình
+### 4. Train Model
 
-Chạy:
+Run:
 
     python main.py
 
 ------------------------------------------------------------------------
 
-## Pipeline tổng thể
+## Overall Pipeline
 
     Image → Encoder → z → PPO → Δz → z' → Decoder → Generated Image
                                           ↓
                                      Transformer
                                           ↓
                                   Anomaly Detection
+
