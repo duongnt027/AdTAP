@@ -1,0 +1,45 @@
+[================ [1] DATASET MVTec-AD_hazelnut ================]
+AUC-ROC: 0.8587
+
+[================ [2] DATASET MVTec-AD_leather ================]
+AUC-ROC: 1.0000
+
+[================ [3] DATASET MVTec-AD_capsule ================]
+AUC-ROC: 0.3523
+
+[================ [4] DATASET MVTec-AD_grid ================]
+AUC-ROC: 0.5158
+
+[================ [5] DATASET MVTec-AD_carpet ================]
+AUC-ROC: 0.9943
+
+[================ [6] DATASET MVTec-AD_bottle ================]
+AUC-ROC: 0.4739
+
+[================ [7] DATASET MVTec-AD_cable ================]
+AUC-ROC: 0.8280
+
+[================ [8] DATASET MVTec-AD_metal_nut ================]
+AUC-ROC: 0.9184
+
+[================ [9] DATASET MVTec-AD_pill ================]
+AUC-ROC: 0.1916
+
+[================ [10] DATASET MVTec-AD_screw ================]
+AUC-ROC: 0.4327
+
+[================ [11] DATASET MVTec-AD_toothbrush ================]
+AUC-ROC: 0.7392
+
+[================ [12] DATASET MVTec-AD_zipper ================]
+AUC-ROC: 0.9101
+
+[================ [13] DATASET MVTec-AD_transistor ================]
+AUC-ROC: 0.6549
+
+[================ [14] DATASET MVTec-AD_tile ================]
+AUC-ROC: 0.9642
+
+[================ [15] DATASET MVTec-AD_wood ================]
+AUC-ROC: 0.7901
+

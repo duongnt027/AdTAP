@@ -1,152 +1,247 @@
-import json
 import torch
+import os
+import torch.optim as optim
+import torch.nn as nn
+from torch.utils.data import ConcatDataset, DataLoader
 import numpy as np
-from torch.utils.data import DataLoader
+import shutil
 
-from utils import split_dataset, report_detector
-from ad_dataset import AnorDataset
-from rl_net import AnorEnv, GenPPO
-from gen_net import CVae
-from nn_net import SimpleDetector, BaseNet, TransformerDetector
+from rl import LatentSpaceEnv, PPO
+from models import Actor, Critic, CNNAutoEncoder, ResNetEmbedder, ViTransformerDetector
+from modules import EarlyStopping, SyntheticDataset
+from utils import load_train_test, count_classes, train_cnn_ae, train_detector, load_z_space, Gen_with_PPO, One_Step_To_Feasible_Action, evaluate_model, set_seed
 
-def main_training_loop(X_train, y_train, X_test, y_test, episodes=10, k_new=100, device="cpu"):
-    """Main training loop implementing the algorithm"""
-    
-    # Initialize models
-    in_dim = X_train.shape[1]
-    model_cvae = CVae(in_dim=in_dim, device=device)
-    model_detector = SimpleDetector(in_dim=in_dim, device=device)
-    model_ppo = None
-    
-    # Create datasets
-    train_ds = AnorDataset(X_train, y_train)
-    test_ds = AnorDataset(X_test, y_test, test_dataset=True)
-    print(X_test.shape[0])
-    print(f"Prepared Test datase with size {len(test_ds)}")
+set_seed(11)
 
-    print("Starting training loop...")
-    
-    for ep in range(episodes):
-        print(f"\n=== Episode {ep + 1}/{episodes} ===")
-        
-        # Balance dataset
-        done = train_ds.balance_fn()
-        if done:
-            print("Dataset already balanced, breaking...")
-            break
-            
-        train_loader = DataLoader(train_ds, batch_size=64, shuffle=True)
-        
-        # if ep == 0:
-        # First episode: train VAE
-        print("Training VAE...")
-        vae_loss = model_cvae.train_fn(train_loader)
-        print(f"VAE Loss: {vae_loss:.4f}")
-        
-        # Evaluate VAE
-        # report_generator(model_cvae, test_ds, device)
-        
-        # Initialize RL environment and agent
-        rl_env = AnorEnv(train_ds, model_cvae, model_detector)
-        
-        # Create PPO networks
-        actor_net = BaseNet(in_dim, 2, clamp=2.0)  # Output [mu, sigma]
-        critic_net = BaseNet(in_dim, 1)
-        model_ppo = GenPPO(actor_net, critic_net, rl_env)
-        
-        print("Generating new anomaly samples with RL...")
-        # Generate new anomaly samples using RL
-        x_news = []
-        obs, _ = rl_env.reset()
-        
-        for k in range(k_new):
-            action, _ = model_ppo.get_action(obs)
-            new_obs, reward, terminated, truncated, info = rl_env.step(action)
-            
-            if info.get('added_to_buffer', False):
-                x_news.append(new_obs.to(device))
-            
-            if terminated or truncated:
-                obs, _ = rl_env.reset()
-            else:
-                obs = rl_env.current_state
-        
-        # Update dataset with new samples
-        if x_news:
-            print(f"Generated {len(x_news)} new anomaly samples")
-            # x_news = torch.tensor(x_news).to(device)
-            # print(x_news)
-            train_ds.update_anomaly_fn(torch.stack(x_news))
-            train_loader = DataLoader(train_ds, batch_size=64, shuffle=True)
-        
-        # Train detector
-        print("Training detector...")
-        detector_loss = model_detector.train_fn(train_loader)
-        print(f"Detector Loss: {detector_loss:.4f}")
-        
-        # Evaluate detector
-        detector_report = report_detector(model_detector, test_ds, device)
-        
-        # Update RL environment with new detector
-        rl_env = AnorEnv(train_ds, model_cvae, model_detector)
-        model_ppo.env = rl_env
-        
-        # Train RL agent
-        print("Training RL agent...")
-        model_ppo.learn(total_timesteps=60000)
-        
-        print(f"Dataset size after episode {ep + 1}: {len(train_ds)}")
+DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    print("\nTraining completed!")
-    return model_cvae, model_detector, model_ppo
+DATASET_DIR = "/kaggle/input/anomaly-dataset-npz/npz-dataset/BMAD-AD"
+DATASET_NAME = "hist_DIY"
+DATASET_PATH = f"{DATASET_DIR}/{DATASET_NAME}/BMAD-AD_{DATASET_NAME}_train.npz"
+TRAIN_PATH = f"{DATASET_DIR}/{DATASET_NAME}/BMAD-AD_{DATASET_NAME}_train.npz"
+VALID_PATH = f"{DATASET_DIR}/{DATASET_NAME}/BMAD-AD_{DATASET_NAME}_valid.npz"
 
-# PREPARING DATASET
-# Change it with the output of 0_download_dataset.py
-DATASET_NPZ_DIR = "/usr/local/lib/python3.11/dist-packages/adbench/datasets"
-DATASET_JSON_DIR = "./adbench_ds/json"
+SYNTHETIC_DIR = f"/kaggle/working/synthetics/"
+os.makedirs(SYNTHETIC_DIR, exist_ok=True)
+MODEL_DIR = f"/kaggle/working/models/"
+os.makedirs(MODEL_DIR, exist_ok=True)
 
-with open(f"./datasets_files_name.json", "r") as file:
-    dataset_trees = json.load(file)
+PATIENTCE = 5
+BATCH_SIZE = 100
+LATENT_DIM = 64
+EMBEDDING_DIM = 128
+REFINE_STEP = 10
 
-dataset_trees.pop("CV_by_ViT")
-dataset_trees.pop("NLP_by_RoBERTa")
-
-# ds_type = "CV_by_ResNet18"
-# ds_name = "CIFAR10_1"
-ds_type = "Classical"
-ds_name = "7_Cardiotocography"
-
-ds_npz = dict(np.load(f"{DATASET_NPZ_DIR}/{ds_type}/{ds_name}.npz"))
-
-ds_X = torch.from_numpy(ds_npz['X']).float()
-ds_y = torch.from_numpy(ds_npz['y']).float()
-
-device = "cuda" if torch.cuda.is_available() else "cpu"
-print(f"Using device: {device}")
-
-# Example data creation (replace with your actual data)
-N_train, N_test = 1000, 200
-in_dim = 10
-
-X, y = split_dataset(ds_X, ds_y, [80, 20])
-X_train, X_test = X
-y_train, y_test = y
-print("Splitted dataset!")
-print(f"Train size: {X_train.shape[0]}")
-print(f"Test size: {X_test.shape[0]}")
-
-X_train = X_train.to(device)
-X_test = X_test.to(device)
-y_train = y_train.to(device)
-y_test = y_test.to(device)
-# X_train, X_test = ds_X[:280000], ds_X[280001:]
-# y_train, y_test = ds_y[:280000], ds_y[280001:]
-
-# Run training
-model_cvae, model_detector, model_ppo = main_training_loop(
-    X_train, y_train, X_test, y_test,
-    episodes=5,
-    k_new=50,
-    device=device
+train_dataset, train_loader, test_dataset, test_loader = load_train_test(
+    DATASET_PATH, device=DEVICE, batch_size=BATCH_SIZE, resize=256, ratio_0=1
 )
+
+env = LatentSpaceEnv(
+    device=DEVICE,
+    max_steps=REFINE_STEP
+)
+
+actor = Actor(
+    latent_dim=LATENT_DIM,
+    hidden=256
+)
+
+critic = Critic(
+    latent_dim=LATENT_DIM,
+    hidden=256
+)
+
+ppo = PPO(
+    actor=actor,
+    critic=critic,
+    env=env,
+    lr=3e-4,
+    gamma=0.99,
+    lam=0.95,
+    clip_eps=0.2,
+    device=DEVICE
+)
+
+generator = CNNAutoEncoder(latent_dim=LATENT_DIM).to(DEVICE)
+embedder = ResNetEmbedder(output_dim=EMBEDDING_DIM).to(DEVICE)
+detector = ViTransformerDetector(embedder=embedder).to(DEVICE)
+early_stopper = EarlyStopping(patience=PATIENTCE)
+
+optimizer_g = optim.Adam(generator.parameters(), lr=1e-4)
+optimizer_d = optim.Adam(detector.parameters(), lr=1e-4)
+criterion = nn.BCELoss()
+
+num_epochs_generator = 100
+num_epochs_detector = 100
+num_episodes = 100
+num_steps_ppo = 100
+num_gen_data = 100
+
+synthetic_files = []
+combined_dataset = train_dataset
+
+for ep in range(num_episodes):
+    print(f"\n================ EPISODE {ep+1}/{num_episodes} ================")
+    total_class0, total_class1 = count_classes(combined_dataset)
+
+    print(f"[Episode {ep+1}] Class count → 0: {total_class0}, 1: {total_class1}")
+
+    if total_class1 >= total_class0:
+        print("Dataset is now balanced. Stopping synthetic generation.")
+        break
+
+    # TRAIN GENERATOR
+    early_stopper.reset()
+    for epoch in range(num_epochs_generator):
+        loss_g = train_cnn_ae(generator, train_loader, optimizer_g, DEVICE)
+        if (epoch + 1) % 10 == 0:
+            print(f"[GENERATOR] Epoch {epoch+1}/{num_epochs_generator}, Loss={loss_g:.4f}")
+        early_stopper.step(loss_g)
+        if early_stopper.early_stop:
+            print(f"[GENERATOR] Early stopping at epoch {epoch+1}")
+            print(f"[GENERATOR] Epoch {epoch+1}/{num_epochs_generator}, Loss={loss_g:.4f}")
+            break
+
+    torch.save(generator.state_dict(), f"{MODEL_DIR}/{DATASET_NAME}_generator.pth")
+
+    # TRAIN DETECTOR
+    early_stopper.reset()
+    for epoch in range(num_epochs_detector):
+        loss_d = train_detector(detector, train_loader, optimizer_d, criterion, DEVICE)
+        if (epoch + 1) % 10 == 0:
+            print(f"[DETECTOR] Epoch {epoch+1}/{num_epochs_detector}, Loss={loss_d:.4f}")
+        early_stopper.step(loss_d)
+        if early_stopper.early_stop:
+            print(f"[DETECTOR] Early stopping at epoch {epoch+1}")
+            print(f"[DETECTOR] Epoch {epoch+1}/{num_epochs_detector}, Loss={loss_d:.4f}")
+            break
+
+    torch.save(detector.state_dict(), f"{MODEL_DIR}/{DATASET_NAME}_detector.pth")
+
+
+    # GENERATE SAMPLE CLASS 1
+    synthetic_samples = []
+    idx_class1 = [i for i, idx_lbl in enumerate(train_dataset.indices) if train_dataset.labels[idx_lbl] == 1]
+
+    ppo_gen_count = 0
+    for _ in range(num_gen_data):
+        if not idx_class1:
+            break
+        rand_idx = np.random.choice(idx_class1)
+        x_orig, _ = train_dataset[rand_idx]
+        x_adv = None
+        if ep != 0:
+            x_adv = Gen_with_PPO(actor, generator, x_orig, DEVICE, ep+1, REFINE_STEP)
+        if x_adv is None:
+            x_adv = One_Step_To_Feasible_Action(generator, detector, x_orig, DEVICE)
+        else:
+            ppo_gen_count += 1
+        synthetic_samples.append(x_adv.to(DEVICE))
+
+    ppo_gen_rate  = (ppo_gen_count / num_gen_data) * 100
+    print(f"{ppo_gen_rate:.2f}% of data generated by PPO strategy")
+    
+    syn_tensor = torch.cat(synthetic_samples)            # (N,3,H,W)
+    syn_tensor_hwc = syn_tensor.permute(0,2,3,1).cpu().numpy()   # (N,H,W,3)  <-- HWC
+    syn_labels = np.ones(len(synthetic_samples), dtype=np.float32)
+
+    syn_path = f"{SYNTHETIC_DIR}/syn_ep{ep+1}.npz"
+    np.savez_compressed(syn_path, images=syn_tensor_hwc, labels=syn_labels)
+    synthetic_files.append(syn_path)
+
+    print(f"[EP {ep+1}] Generated synthetic saved:", syn_path)
+
+    synthetic_subsets = []
+    for f in synthetic_files:
+        synthetic_subsets.append(SyntheticDataset(f, DEVICE))
+
+    synthetic_full = ConcatDataset(synthetic_subsets)
+    combined_dataset = ConcatDataset([train_dataset, synthetic_full])
+
+    train_loader = DataLoader(combined_dataset, batch_size=BATCH_SIZE, shuffle=True)
+
+    Z_ppo, Y_ppo = load_z_space(generator, train_loader, DEVICE)
+
+    # TRAIN PPO
+    env.set_data(Z_ppo, Y_ppo)
+    early_stopper.reset()
+    
+    for step in range(num_steps_ppo):
+    
+        _ = ppo.collect_trajectories(
+            num_episodes=4
+        )
+    
+        a_loss, c_loss, avg_reward = ppo.learn()
+    
+        if (step + 1) % 1 == 0:
+            print(
+                f"Step {step+1:03d} | "
+                f"Actor Loss = {a_loss:.4f}, "
+                f"Critic Loss = {c_loss:.4f}, "
+                f"AvgReward = {avg_reward:.4f}"
+            )
+    
+        early_stopper.step(-avg_reward)
+        if early_stopper.early_stop:
+            print(f"[PPO] Early stopping at step {step+1}")
+            print(
+                f"Step {step+1:03d} | "
+                f"Actor Loss = {a_loss:.4f}, "
+                f"Critic Loss = {c_loss:.4f}, "
+                f"AvgReward = {avg_reward:.4f}"
+            )
+            break
+
+    
+    print(f"[EP {ep+1}] Train dataset expanded: now {len(combined_dataset)} samples")
+
+final_detector = ViTransformerDetector(embedder=embedder).to(DEVICE)
+optimizer_final = torch.optim.Adam(final_detector.parameters(), lr=1e-3)
+criterion = nn.BCELoss()
+num_epochs_final = 100
+early_stopper.reset()
+
+for epoch in range(num_epochs_final):
+    loss = train_detector(final_detector, train_loader, optimizer_final, criterion, DEVICE)
+    print(f"[FINAL DETECTOR] Epoch {epoch+1}/{num_epochs_final}, Loss={loss:.4f}")
+
+    early_stopper.step(loss)
+
+    if early_stopper.early_stop:
+        print(f"[FINAL DETECTOR] Early stopping at epoch {epoch+1}")
+        print(f"[FINAL DETECTOR] Epoch {epoch+1}/{num_epochs_final}, Loss={loss:.4f}")
+        break
+
+evaluate_model(final_detector, test_loader, DEVICE, threshold=0.3)
+
+torch.save(final_detector.state_dict(), f"{MODEL_DIR}/{DATASET_NAME}_detector_final.pth")
+print(f"Final detector saved to {MODEL_DIR}/{DATASET_NAME}_detector_final.pth")
+
+torch.save(actor.state_dict(), f"{MODEL_DIR}/{DATASET_NAME}_actor.pth")
+print(f"PPO Actor saved to {MODEL_DIR}/{DATASET_NAME}_actor.pth")
+
+torch.save(critic.state_dict(), f"{MODEL_DIR}/{DATASET_NAME}_critic.pth")
+print(f"PPO Critic saved to {MODEL_DIR}/{DATASET_NAME}_critic.pth")
+
+synthetics_folder = SYNTHETIC_DIR
+synthetics_zip = f"{DATASET_NAME}_synthetics"
+
+shutil.make_archive(synthetics_zip, 'zip', synthetics_folder)
+
+models_folder = MODEL_DIR
+models_zip = f"{DATASET_NAME}_models"
+
+shutil.make_archive(models_zip, 'zip', models_folder)
+
+strict_dataset, strict_loader, _, _ = load_train_test(
+    TRAIN_PATH, device=DEVICE, batch_size=BATCH_SIZE, test_size=0
+)
+evaluate_model(final_detector, strict_loader, DEVICE, threshold=0.3)
+
+strict_dataset, strict_loader, _, _ = load_train_test(
+    VALID_PATH, device=DEVICE, batch_size=BATCH_SIZE, test_size=0
+)
+evaluate_model(final_detector, strict_loader, DEVICE, threshold=0.3)
+
 

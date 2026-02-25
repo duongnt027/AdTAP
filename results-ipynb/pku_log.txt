@@ -1,0 +1,17 @@
+[================ [1] DATASET PKU-AD_food-bottle ================]
+AUC-ROC: 0.4989
+
+[================ [2] DATASET PKU-AD_drink-can ================]
+AUC-ROC: 0.5973
+
+[================ [3] DATASET PKU-AD_drink-bottle ================]
+AUC-ROC: 0.4939
+
+[================ [4] DATASET PKU-AD_food-box ================]
+AUC-ROC: 0.6979
+
+[================ [5] DATASET PKU-AD_cigarette-box ================]
+AUC-ROC: 0.9049
+
+[================ [6] DATASET PKU-AD_food-package ================]
+AUC-ROC: 0.5450

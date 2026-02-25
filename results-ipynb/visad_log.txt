@@ -1,0 +1,36 @@
+[================ [1] DATASET VisA-AD_macaroni1 ================]
+AUC-ROC: 0.8780
+
+[================ [2] DATASET VisA-AD_candle ================]
+AUC-ROC: 0.8568
+
+[================ [3] DATASET VisA-AD_chewinggum ================]
+AUC-ROC: 0.1897
+
+[================ [4] DATASET VisA-AD_fryum ================]
+AUC-ROC: 0.8345
+
+[================ [5] DATASET VisA-AD_pcb1 ================]
+AUC-ROC: 0.9850
+
+[================ [6] DATASET VisA-AD_capsules ================]
+AUC-ROC: 0.7632
+
+[================ [7] DATASET VisA-AD_cashew ================]
+AUC-ROC: 0.6182
+
+[================ [8] DATASET VisA-AD_pcb3 ================]
+AUC-ROC: 0.4365
+
+[================ [9] DATASET VisA-AD_pcb2 ================]
+AUC-ROC: 0.8427
+
+[================ [10] DATASET VisA-AD_macaroni2 ================]
+AUC-ROC: 0.7035
+
+[================ [11] DATASET VisA-AD_pcb4 ================]
+AUC-ROC: 0.7456
+
+[================ [12] DATASET VisA-AD_pipe_fryum ================]
+AUC-ROC: 0.2423
+
